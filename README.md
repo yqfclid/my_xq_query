@@ -1,7 +1,7 @@
 # my_xq_query
 记录简易股票行情
 
-将获取的行情数据通过记录到influxdb中
+通过雪球API获取行情数据，将获取的行情数据通过记录到influxdb中
 
 首先需要安装influxdb
 
