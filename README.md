@@ -16,7 +16,6 @@ File表示导入的文件，文件中包含股票的名字以及代码， 格式
 
 执行程序步骤
 <pre>
-rebar get
-rebar com
+rebar3 compile
 ./start.sh
 </pre>
