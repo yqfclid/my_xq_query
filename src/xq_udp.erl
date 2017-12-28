@@ -101,7 +101,6 @@ handle_call(_Request, _From, State) ->
 handle_cast({send, Packet}, #state{host = Host,
                                  port = Port,
                                  socket = Socket} = State) ->
-    lager:info("~p", [Packet]),
     gen_udp:send(Socket, Host, Port, Packet),
     {noreply, State};
 
