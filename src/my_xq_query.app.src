@@ -1,0 +1,13 @@
+{application, my_xq_query,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  lager
+                 ]},
+  {mod, {my_xq_query_app, []}},
+  {env, []}
+ ]}.

@@ -1,0 +1,2 @@
+-define(PATH, <<"https://xueqiu.com/v4/stock/quote.json?code=">>).
+-define(MEASUREMENT, <<"xq_ticks">>).
