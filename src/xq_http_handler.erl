@@ -20,7 +20,7 @@
 init(Req0, Opts) ->
 	lager:info("receive raw http reqest: ~p", [Req0]),
 	Method = cowboy_req:method(Req0),
-	#{code := Code} = cowboy_req:match_qs([{type, [], undefined}], Req0),
+	#{code := Code} = cowboy_req:match_qs([{code, [], undefined}], Req0),
 	Req1 = handle_req(Method, Code, Req0),
 	{ok, Req1, Opts}.
 
