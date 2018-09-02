@@ -27,7 +27,7 @@ init(Req0, Opts) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-handle_req(<<"GET">>, Code, Req0) ->
+handle_req(<<"GET">>, Code, Req0) when Code =/= undefined->
 	Url = <<?MARKET_URL/binary, Code/binary>>,
 	Reply = 
 		case ets:lookup(?XQ_TAB, cookie) of
@@ -45,9 +45,9 @@ handle_req(<<"GET">>, Code, Req0) ->
 			_Other ->
 				lager:error("find cookie failed: ~p", [_Other])
 		end,
-	cowboy_req:reply(200, [], build_reply(Reply), Req0);
+	cowboy_req:reply(200, headers(), build_reply(Reply), Req0);
 handle_req(_Method, _, Req) ->
-	cowboy_req:reply(400, [], <<"invalid request">>, Req).	
+	cowboy_req:reply(400, headers(), <<"invalid request">>, Req).	
 
 build_reply({error, Reason}) ->
 	Reply = 
@@ -63,3 +63,6 @@ build_reply({ok, ok}) ->
 build_reply({ok, RtnMap}) ->
 	NMap = maps:put(<<"return_code">>, <<"0">>, RtnMap),
 	jiffy:encode(NMap).
+
+headers() ->
+	#{<<"content-type">> => <<"text/plain; charset=utf-8">>}.
