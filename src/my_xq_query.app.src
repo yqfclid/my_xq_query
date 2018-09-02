@@ -1,0 +1,19 @@
+{application, my_xq_query,
+ [{description, "An OTP application"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, { my_xq_query_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    hackney,
+    cowboy
+   ]},
+  {env,[{interval, 1000},
+        {input_files, [{<<"sz">>, "my_tick"}]}]},
+  {modules, []},
+
+  {maintainers, []},
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.
