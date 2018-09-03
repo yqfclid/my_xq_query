@@ -118,6 +118,9 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_cast({change_interval, Interval}, State) ->
+	{noreply, State#state{interval = Interval}};
+
 handle_cast(stop, #state{symbol = Symbol} = State) ->
 	lager:info("stop query ~p market process", [Symbol]),
 	{stop, normal, State};

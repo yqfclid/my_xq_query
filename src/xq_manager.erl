@@ -25,7 +25,7 @@
 
 -include("my_xq_query.hrl").
 
--record(state, {input_files, symbols}).
+-record(state, {input_files, symbols, status}).
 
 %%%===================================================================
 %%% API
@@ -107,7 +107,8 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(init, #state{symbols = Symbols,
-						 input_files = InputFiles} = State) ->
+						 input_files = InputFiles,
+						 status = undefined} = State) ->
 	lager:info("start init xq_query...."),
 	lists:foreach(
 		fun({Area, File}) ->
@@ -125,6 +126,9 @@ handle_info(init, #state{symbols = Symbols,
 					lager:error("read file ~p failed:~p", [File, Reason])
 			end
 	end, InputFiles),
+	{noreply, State#state{status = inited}};
+
+handle_info(init, State) ->
 	{noreply, State};
 
 handle_info(_Info, State) ->
