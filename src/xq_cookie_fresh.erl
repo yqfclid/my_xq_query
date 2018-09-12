@@ -58,7 +58,7 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-	ets:new(?XQ_TAB, [set, named_table, public]),
+	ets:new(?XQ_TAB, [set, named_table, public, {read_concurrency, true}]),
 	self() ! refresh,
     {ok, #state{}}.
 
@@ -116,7 +116,6 @@ handle_info(refresh, #state{timer = Timer} = State) ->
 					200 ->
 						Cookie = xq_utils:get_cookie(Headers),
 						ets:insert(?XQ_TAB, {cookie, Cookie}),
-						xq_manager ! init,
 						erlang:send_after(3600 * 1000, self(), refresh);
 					_ ->
 						lager:error("fresh cookie failed with StatusCode ~p",
