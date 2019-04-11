@@ -98,7 +98,7 @@ handle_cast({write_tick, Market}, #state{conn = Influx} = State) ->
             time = Time,
             date = Date,
             detail = Detail} = Market,
-    Current = maps:get(<<"current">>, Detail, 0),
+    Current = binary_to_float(maps:get(<<"current">>, Detail, <<"0">>)),
     Point = 
         #{measurement => <<"mkt_data">>,
           tags => #{<<"symbol">> => Symbol,
