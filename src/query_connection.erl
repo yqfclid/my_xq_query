@@ -13,7 +13,8 @@
 %% API
 -export([start/1,
          stop/1,
-         change_interval/2]).
+         change_interval/2,
+         force_change_status/2]).
 
 -export([start_link/2]).
 
@@ -54,6 +55,10 @@ start(Symbol) ->
         {error, Reason} -> 
             {error, Reason}
     end.
+
+force_change_status(Symbol, Status) ->
+    PName = xq_utils:generate_name(?MODULE, Symbol),
+    PName ! {change_status, Status}.
 %%--------------------------------------------------------------------
 %% @doc
 %% Starts the server
