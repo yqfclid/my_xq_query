@@ -34,7 +34,7 @@ start_link() ->
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
     InputFiles = application:get_env(my_xq_query, input_files, []),
-    InfluxConn = application:get_env(my_xq_query, influx_conn),
+    {ok, InfluxConn} = application:get_env(my_xq_query, influx_conn),
     ets:new(?SYMBOLS_TAB, [set, named_table, public]),
     ets:new(?COOKIE_TAB, [set, named_table, public, {read_concurrency, true}]),
     SupFlags = 
@@ -75,11 +75,19 @@ init([]) ->
           restart => transient,
           shutdown => infinity,
           type => worker,
-          modules => [xq_tick_writer]},    
+          modules => [xq_tick_writer]},
+    Proc6 = 
+        #{id => xq_tick_signal,              
+          start => {xq_tick_signal, start_link, []},
+          restart => transient,
+          shutdown => infinity,
+          type => worker,
+          modules => [xq_tick_signal]},      
     {ok, { SupFlags, [Proc1, 
                       Proc2,
                       Proc3,
                       Proc5,
+                      Proc6,
                       Proc4]} }.
 
 %%====================================================================

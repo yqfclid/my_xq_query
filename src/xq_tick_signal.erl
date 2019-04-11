@@ -4,18 +4,15 @@
 %%% @doc
 %%%
 %%% @end
-%%% Created :  2018-08-29 23:42:18
+%%% Created :  2019-04-11 15:38:34
 %%%-------------------------------------------------------------------
--module(query_connection).
+-module(xq_tick_signal).
 
 -behaviour(gen_server).
 
 %% API
--export([start/1,
-         stop/1,
-         change_interval/2]).
-
--export([start_link/2]).
+-export([get_status/0]).
+-export([start_link/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -25,35 +22,17 @@
          terminate/2,
          code_change/3]).
 
+-define(SERVER, ?MODULE).
+
 -include("my_xq_query.hrl").
 
--record(state, {symbol, timer, interval, status}).
+-record(state, {trading_duration, timer, signal_id, status}).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
-change_interval(Symbol, NInterval) when is_integer(NInterval) 
-                                   andalso is_binary(Symbol) ->
-    PName = xq_utils:generate_name(?MODULE, Symbol),
-    gen_server:cast(PName, {change_interval, NInterval});
-change_interval(_, _) ->
-    {error, bad_arg}.
-
-stop(Symbol) ->
-    PName = xq_utils:generate_name(?MODULE, Symbol),
-    gen_server:cast(PName, stop).
-
-start(Symbol) ->
-    case supervisor:start_child(query_connection_sup, [Symbol]) of
-        {ok, Pid} ->
-            {ok, Pid};
-        {ok, Pid, _Info} -> 
-            {ok, Pid};
-        {error, {already_started, Pid}} -> 
-            {ok, Pid};
-        {error, Reason} -> 
-            {error, Reason}
-    end.
+get_status() ->
+    gen_server:call(?MODULE, status).
 %%--------------------------------------------------------------------
 %% @doc
 %% Starts the server
@@ -61,9 +40,8 @@ start(Symbol) ->
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link(Interval, Symbol) ->
-    PName = xq_utils:generate_name(?MODULE, Symbol),
-    gen_server:start_link({local, PName}, ?MODULE, [Interval, Symbol], []).
+start_link() ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 
 %%%===================================================================
@@ -81,13 +59,13 @@ start_link(Interval, Symbol) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([Interval, Symbol]) ->
-    Status = xq_tick_signal:get_status(),
-    TimeRef = erlang:start_timer(Interval, self(), query_market),
-    {ok, #state{symbol = Symbol,
-                interval = Interval,
+init([]) ->
+    {Id, Status, NextSt, Interval} = check_status(),
+    Timer = erlang:start_timer(Interval, self(), {change_status, NextSt}),
+    {ok, #state{trading_duration = ?TRADING_DURATION,
+                timer = Timer,
                 status = Status,
-                timer = TimeRef}}.
+                signal_id = Id}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -103,6 +81,8 @@ init([Interval, Symbol]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call(status, _From, #state{status = Status} = State) ->
+    {reply, Status, State};
 
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -119,13 +99,6 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast({change_interval, Interval}, State) ->
-    {noreply, State#state{interval = Interval}};
-
-handle_cast(stop, #state{symbol = Symbol} = State) ->
-    lager:info("stop query ~p market process", [Symbol]),
-    {stop, normal, State};
-
 handle_cast(_Msg, State) ->
     lager:warning("Can't handle msg: ~p", [_Msg]),
     {noreply, State}.
@@ -140,50 +113,14 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info({timeout, Timer, query_market}, #state{symbol = Symbol,
-                                                   timer = Timer,
-                                                   interval = Interval,
-                                                   status = on} = State) ->
-    Url = <<?MARKET_URL/binary, Symbol/binary>>,
-    case ets:lookup(?COOKIE_TAB, cookie) of
-        [{_, Cookie}] ->        
-            case xq_utils:http_request(get, 
-                                       Url, 
-                                       [{cookie, Cookie}], 
-                                       <<>>, 
-                                       [{ssl_options, [{depth, 2}]}]) of
-                {ok, Body} ->
-                    Ret = jiffy:decode(Body, [return_maps]),
-                    [Key|_] = maps:keys(Ret),
-                    #{Key := Detail} = Ret,
-                    Time = xq_utils:timestamp(),
-                    Date = xq_utils:date(),
-                    Market = #market{symbol = Symbol,
-                                     time = Time,
-                                     date = Date, 
-                                     detail = Detail},
-                    xq_collector:collect_market(Market);
-                {error, Reason} ->
-                    lager:error("query ~p market failed:~p", [Symbol, Reason])
-            end;
-        [] ->
-            lager:error("no cookie find");
-        {error, Reason} ->
-            lager:error("find cookie failed:~p", [Reason])
-    end,
-    NTimer = erlang:start_timer(Interval, self(), query_market),
-    {noreply, State#state{timer = NTimer}};
-
-handle_info({timeout, Timer, query_market}, #state{timer = Timer,
-                                                   interval = Interval} = State) ->
-    NTimer = erlang:start_timer(Interval, self(), query_market),
-    {noreply, State#state{timer = NTimer}};
-
-handle_info({change_status, Status}, State) ->
-    {noreply, State#state{status = Status}};
-
-handle_info({status, Status}, State) ->
-    {noreply, State#state{status = Status}};
+handle_info({timeout, Timer, {change_status, {Id, Status}}}, #state{timer = Timer,
+                                                                    trading_duration = Durations} = State) ->
+    [Pid ! {change_status, Status} || {Pid, _} <- ets:tab2list(?SYMBOLS_TAB)],
+    {NId, NextSt, Interval} = next_status(Id, Durations),
+    NTimer = erlang:start_timer(Interval, self(), {change_status, {NId, NextSt}}),
+    {noreply, State#state{timer = NTimer,
+                          status = Status,
+                          signal_id = Id}};
 
 handle_info(_Info, State) ->
     lager:warning("Can't handle info: ~p", [_Info]),
@@ -218,3 +155,42 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+check_status() ->
+    Now = erlang:time(),
+    Date = erlang:date(),
+    check_status(Date, Now, ?TRADING_DURATION).
+
+check_status(Date, Time, Duration) ->
+    case calendar:day_of_the_week(Date) of
+        WeekDay when WeekDay >5 ->
+            [{{H, M, S}, _}|_] = Duration,
+            Interval = ((7 - WeekDay) * 86400 + H * 3600 + M * 60 + S) * 1000, 
+            {5, off, on, Interval};
+        _ ->
+            check_status_1(Duration, Time)
+    end. 
+
+check_status_1([{_, _}, {_, {H4, M4, S4} = D4}], {H, M, S} = Time) when Time >= D4 ->
+    {4, off, on, (H * 3600 + M * 60 + S + 86400 - H4 * 3600 - M4 * 60 - S4) * 1000};
+check_status_1([{{H1, M1, S1} = D1, _}, {_, _}], {H, M, S} = Time) when Time < D1 ->
+    {4, off, on, ((H1 - H) * 3600 + (M1 - M) * 60 + (S1 - S)) * 1000};
+check_status_1([{D1, {H2, M2, S2} = D2}, {_, _}], {H, M, S} = Time) when Time >= D1 andalso Time =< D2 ->
+    {1, on, off, ((H2 - H) * 3600 + (M2 - M) * 60 + (S2 - S)) * 1000};
+check_status_1([{_, D2}, {{H3, M3, S3} = D3, _}], {H, M, S} = Time) when Time > D2 andalso Time < D3 ->
+    {2, off, on, ((H3 - H) * 3600 + (M3 - M) * 60 + (S3 - S)) * 1000};
+check_status_1([{_, _}, {D3, {H4, M4, S4} = D4}], {H, M, S} = Time) when Time >= D3 andalso Time < D4 ->
+    {3, on, off, ((H4 - H) * 3600 + (M4 - M) * 60 + (S4 - S)) * 1000}.
+
+next_status(1, [{{H1, M1, S1}, {H2, M2, S2}}, {_, _}]) -> 
+    {2, off, ((H2 - H1) * 3600 + (M2 - M1) * 60 + (S2 - S1)) * 1000};
+next_status(2, [{_, {H2, M2, S2}}, {{H3, M3, S3}, _}]) ->
+    {3, on, ((H3 - H2) * 3600 + (M3 - M2) * 60 + (S3 - S2)) * 1000};
+next_status(3, [{_, _}, {{H3, M3, S3}, {H4, M4, S4}}]) ->
+    {4, off, ((H4 - H3) * 3600 + (M4 - M3) * 60 + (S4 - S3)) * 1000};
+next_status(4, [{{H1, M1, S1}, _}, {_, {H4, M4, S4}}]) ->
+    case calendar:day_of_the_week(erlang:date()) of
+        5 ->
+            {1, on, (3 * 86400 + H1 * 3600 + M1 * 60 + S1 - H4 * 3600 - M4 * 60 - S4) * 1000};
+        _ ->
+            {1, on, (86400 + H1 * 3600 + M1 * 60 + S1 - H4 * 3600 - M4 * 60 - S4) * 1000}
+    end.

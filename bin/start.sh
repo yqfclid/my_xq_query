@@ -1,0 +1,1 @@
+erl -pa ebin -pa deps/*/ebin -config self.config -s my_xq_query
