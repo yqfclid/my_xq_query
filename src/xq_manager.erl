@@ -25,7 +25,7 @@
 
 -include("my_xq_query.hrl").
 
--record(state, {input_files, symbols, status}).
+-record(state, {}).
 
 %%%===================================================================
 %%% API
@@ -58,9 +58,32 @@ start_link(InputFiles) ->
 %% @end
 %%--------------------------------------------------------------------
 init([InputFiles]) ->
-	Symbols = ets:new(symbols, [set, named_table, private]),
-    {ok, #state{symbols = Symbols,
-    			input_files = InputFiles}}.
+    lager:info("start init xq_query...."),
+    process_flag(trap_exit, true),
+    lists:foreach(
+        fun(InputFile) ->
+            case file:read_file(InputFile) of
+                {ok, Binary} ->
+                    Symbols = 
+                        lists:filter(
+                            fun(<<>>) -> false;
+                               (_) -> true
+                        end, re:split(Binary, <<"\n">>)),
+                    StartFun = 
+                        fun(Symbol) ->
+                            case query_connection:start(Symbol) of
+                                {ok, Pid} ->
+                                    ets:insert(?SYMBOLS_TAB, {Pid, Symbol});
+                                {error, Reason} ->
+                                    lager:error("start ~p query failed:~p", [Symbol, Reason])
+                            end
+                        end,
+                    lists:foreach(StartFun, Symbols);
+                {error, Reason} ->
+                    lager:error("read file ~p failed:~p", [InputFile, Reason])
+            end
+    end, InputFiles),
+    {ok, #state{}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -106,30 +129,10 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(init, #state{symbols = Symbols,
-						 input_files = InputFiles,
-						 status = undefined} = State) ->
-	lager:info("start init xq_query...."),
-	lists:foreach(
-		fun({Area, File}) ->
-			case file:read_file(File) of
-				{ok, Binary} ->
-					Fun = 
-						fun({Name, Code}) ->
-							ets:insert(Symbols, {Name, Area, Code}),
-							query_connection:start(Area, Code);
-						   (over) ->
-						   	lager:info("read file ~p over", [File])
-						end,
-					xq_utils:spilt_code(Binary, Fun);
-				{error, Reason} ->
-					lager:error("read file ~p failed:~p", [File, Reason])
-			end
-	end, InputFiles),
-	{noreply, State#state{status = inited}};
-
-handle_info(init, State) ->
-	{noreply, State};
+handle_info({'EXIT', Pid, Reason}, State) ->
+    lager:info("~p stoped with reason:~p", [Pid, Reason]),
+    ets:delete(?SYMBOLS_TAB, Pid),
+    {noreply, State};
 
 handle_info(_Info, State) ->
     lager:warning("Can't handle info: ~p", [_Info]),

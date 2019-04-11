@@ -31,18 +31,18 @@ start_link() ->
 %% Before OTP 18 tuples must be used to specify a child. e.g.
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
-	Interval = application:get_env(my_xq_query, interval, 1000),
+  Interval = application:get_env(my_xq_query, query_interval, 5000),
     SupFlags = 
-    	#{strategy => simple_one_for_one,
+      #{strategy => simple_one_for_one,
           intensity => 1000,
           period => 3600},
     Proc1 = 
-    	#{id => query_connection,              
-      	  start => {query_connection, start_link, [Interval]},
-      	  restart => transient,
-      	  shutdown => infinity,
-      	  type => supervisor,
-      	  modules => [query_connection]},
+      #{id => query_connection,              
+          start => {query_connection, start_link, [Interval]},
+          restart => transient,
+          shutdown => infinity,
+          type => supervisor,
+          modules => [query_connection]},
     {ok, { SupFlags, [Proc1]} }.
 
 %%====================================================================

@@ -58,8 +58,7 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-	ets:new(?XQ_TAB, [set, named_table, public, {read_concurrency, true}]),
-	self() ! refresh,
+    self() ! refresh,
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -107,26 +106,26 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(refresh, #state{timer = Timer} = State) ->
-	erlang:cancel_timer(Timer),
-	NTimer = 
-		case hackney:request(get, ?XQ_URL, [], <<>>, [{ssl_options, [{depth, 2}]}]) of
-			{ok, StatusCode, Headers, Ref} ->
-				hackney:close(Ref),
-				case StatusCode of
-					200 ->
-						Cookie = xq_utils:get_cookie(Headers),
-						ets:insert(?XQ_TAB, {cookie, Cookie}),
-						erlang:send_after(3600 * 1000, self(), refresh);
-					_ ->
-						lager:error("fresh cookie failed with StatusCode ~p",
-							[StatusCode]),
-						erlang:send_after(1000, self(), refresh)
-				end;
-			{error, Reason} ->
-				lager:error("fresh cookie failed:~p", [Reason]),
-				erlang:send_after(1000, self(), refresh)
-		end,
-	{noreply, State#state{timer = NTimer}};
+    erlang:cancel_timer(Timer),
+    NTimer = 
+        case hackney:request(get, ?XQ_URL, [], <<>>, [{ssl_options, [{depth, 2}]}]) of
+            {ok, StatusCode, Headers, Ref} ->
+                hackney:close(Ref),
+                case StatusCode of
+                    200 ->
+                        Cookie = xq_utils:get_cookie(Headers),
+                        ets:insert(?COOKIE_TAB, {cookie, Cookie}),
+                        erlang:send_after(3600 * 1000, self(), refresh);
+                    _ ->
+                        lager:error("fresh cookie failed with StatusCode ~p",
+                            [StatusCode]),
+                        erlang:send_after(1000, self(), refresh)
+                end;
+            {error, Reason} ->
+                lager:error("fresh cookie failed:~p", [Reason]),
+                erlang:send_after(1000, self(), refresh)
+        end,
+    {noreply, State#state{timer = NTimer}};
 
 handle_info(_Info, State) ->
     lager:warning("Can't handle info: ~p", [_Info]),

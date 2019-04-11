@@ -12,8 +12,8 @@
 
 %% API
 -export([collect_market/1,
-		 subscribe/1,
-		 unsubscribe/1]).
+         subscribe/1,
+         unsubscribe/1]).
 
 -export([start_link/0]).
 
@@ -34,14 +34,15 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
-collect_market({Symbol, Market}) ->
-	gen_server:cast(?SERVER, {market, Symbol, Market}).
+collect_market(Market) ->
+    xq_tick_writer:write_tick(Market),
+    gen_server:cast(?SERVER, {market, Market}).
 
 subscribe(Pid) ->
-	gen_server:call(?SERVER, {subscribe, Pid}).
+    gen_server:call(?SERVER, {subscribe, Pid}).
 
 unsubscribe(Pid) ->
-	gen_server:call(?SERVER, {unsubscribe, Pid}).
+    gen_server:call(?SERVER, {unsubscribe, Pid}).
 %%--------------------------------------------------------------------
 %% @doc
 %% Starts the server
@@ -69,7 +70,7 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-	process_flag(trap_exit, true),
+    process_flag(trap_exit, true),
     {ok, #state{subscribers = sets:new()}}.
 
 %%--------------------------------------------------------------------
@@ -87,16 +88,16 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call({subscribe, Pid}, _From, State) ->
-	#state{subscribers = Subs} = State,
-	link(Pid),
-	NSubs = sets:add_element(Pid, Subs),
-	{reply, ok, State#state{subscribers = NSubs}};
+    #state{subscribers = Subs} = State,
+    link(Pid),
+    NSubs = sets:add_element(Pid, Subs),
+    {reply, ok, State#state{subscribers = NSubs}};
 
 handle_call({unsubscribe, Pid}, _From, State) ->
-	#state{subscribers = Subs} = State,
-	unlink(Pid),
-	NSubs = sets:del_element(Pid, Subs),
-	{reply, ok, State#state{subscribers = NSubs}};
+    #state{subscribers = Subs} = State,
+    unlink(Pid),
+    NSubs = sets:del_element(Pid, Subs),
+    {reply, ok, State#state{subscribers = NSubs}};
 
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -113,13 +114,13 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast({market, Symbol, Market}, State) ->
-	#state{subscribers = Subs} = State,
-	sets:fold( 
-		fun(Pid, _) ->
-			Pid ! Market
-	end, ok, Subs),
-	{noreply, State};
+handle_cast({market, Market}, State) ->
+    #state{subscribers = Subs} = State,
+    sets:fold( 
+        fun(Pid, _) ->
+            Pid ! {market, Market}
+    end, ok, Subs),
+    {noreply, State};
 
 handle_cast(_Msg, State) ->
     lager:warning("Can't handle msg: ~p", [_Msg]),

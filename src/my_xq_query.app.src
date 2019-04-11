@@ -7,10 +7,11 @@
    [kernel,
     stdlib,
     hackney,
-    cowboy
+    cowboy,
+    influx
    ]},
-  {env,[{interval, 1000},
-        {input_files, [{<<"sz">>, "my_tick"}]}]},
+  {env,[{interval, 5000},
+        {input_files, "my_tick"}]},
   {modules, []},
 
   {maintainers, []},

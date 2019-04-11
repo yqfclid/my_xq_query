@@ -4,18 +4,15 @@
 %%% @doc
 %%%
 %%% @end
-%%% Created :  2018-08-29 23:42:18
+%%% Created :  2019-04-11 14:09:49
 %%%-------------------------------------------------------------------
--module(query_connection).
+-module(xq_tick_writer).
 
 -behaviour(gen_server).
 
 %% API
--export([start/1,
-         stop/1,
-         change_interval/2]).
-
--export([start_link/2]).
+-export([write_tick/1]).
+-export([start_link/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -25,35 +22,17 @@
          terminate/2,
          code_change/3]).
 
--include("my_xq_query.hrl").
+-define(SERVER, ?MODULE).
 
--record(state, {symbol, timer, interval}).
+-record(state, {conn}).
+
+-include("my_xq_query.hrl").
 
 %%%===================================================================
 %%% API
 %%%===================================================================
-change_interval(Symbol, NInterval) when is_integer(NInterval) 
-                                   andalso is_binary(Symbol) ->
-    PName = xq_utils:generate_name(?MODULE, Symbol),
-    gen_server:cast(PName, {change_interval, NInterval});
-change_interval(_, _) ->
-    {error, bad_arg}.
-
-stop(Symbol) ->
-    PName = xq_utils:generate_name(?MODULE, Symbol),
-    gen_server:cast(PName, stop).
-
-start(Symbol) ->
-    case supervisor:start_child(query_connection_sup, [Symbol]) of
-        {ok, Pid} ->
-            {ok, Pid};
-        {ok, Pid, _Info} -> 
-            {ok, Pid};
-        {error, {already_started, Pid}} -> 
-            {ok, Pid};
-        {error, Reason} -> 
-            {error, Reason}
-    end.
+write_tick(Market) ->
+    gen_server:cast(?MODULE, {write_tick, Market}).
 %%--------------------------------------------------------------------
 %% @doc
 %% Starts the server
@@ -61,9 +40,8 @@ start(Symbol) ->
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link(Interval, Symbol) ->
-    PName = xq_utils:generate_name(?MODULE, Symbol),
-    gen_server:start_link({local, PName}, ?MODULE, [Interval, Symbol], []).
+start_link(Influx) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [Influx], []).
 
 
 %%%===================================================================
@@ -81,11 +59,8 @@ start_link(Interval, Symbol) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([Interval, Symbol]) ->
-    self() ! query_market,
-    {ok, #state{symbol = Symbol,
-                timer = make_ref(),
-                interval = Interval}}.
+init([Influx]) ->
+    {ok, #state{conn = Influx}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -117,12 +92,21 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast({change_interval, Interval}, State) ->
-    {noreply, State#state{interval = Interval}};
-
-handle_cast(stop, #state{symbol = Symbol} = State) ->
-    lager:info("stop query ~p market process", [Symbol]),
-    {stop, normal, State};
+handle_cast({write_tick, Market}, #state{conn = Influx} = State) ->
+    lager:debug("write tick ~p", [Market]),
+    #market{symbol = Symbol,
+            time = Time,
+            date = Date,
+            detail = Detail} = Market,
+    Current = maps:get(<<"current">>, Detail, 0),
+    Point = 
+        #{measurement => <<"mkt_data">>,
+          tags => #{<<"symbol">> => Symbol,
+                    <<"date">> => Date},
+          fields => #{<<"current">> => Current},
+          time => Time},
+    influx:write_point(Influx, Point),
+    {noreply, State};
 
 handle_cast(_Msg, State) ->
     lager:warning("Can't handle msg: ~p", [_Msg]),
@@ -138,40 +122,6 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(query_market, #state{symbol = Symbol,
-                                 timer = Timer,
-                                 interval = Interval} = State) ->
-    erlang:cancel_timer(Timer),
-    Url = <<?MARKET_URL/binary, Symbol/binary>>,
-    case ets:lookup(?COOKIE_TAB, cookie) of
-        [{_, Cookie}] ->        
-            case xq_utils:http_request(get, 
-                                       Url, 
-                                       [{cookie, Cookie}], 
-                                       <<>>, 
-                                       [{ssl_options, [{depth, 2}]}]) of
-                {ok, Body} ->
-                    Ret = jiffy:decode(Body, [return_maps]),
-                    [Key|_] = maps:keys(Ret),
-                    #{Key := Detail} = Ret,
-                    Time = xq_utils:timestamp(),
-                    Date = xq_utils:date(),
-                    Market = #market{symbol = Symbol,
-                                     time = Time,
-                                     date = Date, 
-                                     detail = Detail},
-                    xq_collector:collect_market(Market);
-                {error, Reason} ->
-                    lager:error("query ~p market failed:~p", [Symbol, Reason])
-            end;
-        [] ->
-            lager:error("no cookie find");
-        {error, Reason} ->
-            lager:error("find cookie failed:~p", [Reason])
-    end,
-    NTimer = erlang:send_after(Interval, self(), query_market),
-    {noreply, State#state{timer = NTimer}};
-
 handle_info(_Info, State) ->
     lager:warning("Can't handle info: ~p", [_Info]),
     {noreply, State}.
