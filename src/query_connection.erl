@@ -184,7 +184,8 @@ handle_info({timeout, Timer, query_market}, #state{timer = Timer,
     NTimer = erlang:start_timer(Interval, self(), query_market),
     {noreply, State#state{timer = NTimer}};
 
-handle_info({change_status, Status}, State) ->
+handle_info({change_status, Status}, #state{symbol = Symbol} = State) ->
+    lager:info("~p change status to ~p", [Symbol, Status]),
     {noreply, State#state{status = Status}};
 
 handle_info({status, Status}, State) ->
