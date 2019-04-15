@@ -61,7 +61,8 @@ start_link() ->
 %%--------------------------------------------------------------------
 init([]) ->
     {Id, Status, NextSt, Interval} = check_status(),
-    Timer = erlang:start_timer(Interval, self(), {change_status, NextSt}),
+    NId = next_id(Id),
+    Timer = erlang:start_timer(Interval, self(), {change_status, {NId, NextSt}}),
     {ok, #state{trading_duration = ?TRADING_DURATION,
                 timer = Timer,
                 status = Status,
@@ -194,3 +195,8 @@ next_status(4, [{{H1, M1, S1}, _}, {_, {H4, M4, S4}}]) ->
         _ ->
             {1, on, (86400 + H1 * 3600 + M1 * 60 + S1 - H4 * 3600 - M4 * 60 - S4) * 1000}
     end.
+
+next_id(1) -> 2;
+next_id(2) -> 3;
+next_id(3) -> 4;
+next_id(4) -> 1.
