@@ -116,7 +116,7 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info({timeout, Timer, {change_status, {Id, Status}}}, #state{timer = Timer,
                                                                     trading_duration = Durations} = State) ->
-    [Pid ! {change_status, Status} || {Pid, _} <- ets:tab2list(?SYMBOLS_TAB)],
+    lists:foreach(fun({Pid, _}) -> Pid ! {change_status, Status} end, ets:tab2list(?SYMBOLS_TAB)),
     {NId, NextSt, Interval} = next_status(Id, Durations),
     NTimer = erlang:start_timer(Interval, self(), {change_status, {NId, NextSt}}),
     {noreply, State#state{timer = NTimer,
