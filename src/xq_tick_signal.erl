@@ -171,8 +171,8 @@ check_status(Date, Time, Duration) ->
             check_status_1(Duration, Time)
     end. 
 
-check_status_1([{_, _}, {_, {H4, M4, S4} = D4}], {H, M, S} = Time) when Time >= D4 ->
-    {4, off, on, (H * 3600 + M * 60 + S + 86400 - H4 * 3600 - M4 * 60 - S4) * 1000};
+check_status_1([{{H1, M1, S1}, _}, {_, D4}], {H, M, S} = Time) when Time >= D4 ->
+    {4, off, on, (H1 * 3600 + M1 * 60 + S1 + 86400 - H * 3600 - M * 60 - S) * 1000};
 check_status_1([{{H1, M1, S1} = D1, _}, {_, _}], {H, M, S} = Time) when Time < D1 ->
     {4, off, on, ((H1 - H) * 3600 + (M1 - M) * 60 + (S1 - S)) * 1000};
 check_status_1([{D1, {H2, M2, S2} = D2}, {_, _}], {H, M, S} = Time) when Time >= D1 andalso Time =< D2 ->
