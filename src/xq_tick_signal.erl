@@ -166,7 +166,7 @@ check_status(Date, Time, Duration) ->
         WeekDay when WeekDay >5 ->
             [{{H, M, S}, _}|_] = Duration,
             Interval = ((7 - WeekDay) * 86400 + H * 3600 + M * 60 + S) * 1000, 
-            {5, off, on, Interval};
+            {4, off, on, Interval};
         _ ->
             check_status_1(Duration, Time)
     end. 
